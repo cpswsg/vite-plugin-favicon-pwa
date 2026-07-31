@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Favicon Lab</title>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <div class="eyebrow">vite-plugin-favicon-pwa example</div>
+        <h1>One mark.<br /><em>Every surface.</em></h1>
+        <p>
+          A live inspection bench for the favicon, Apple touch icon, and
+          installable-app assets generated from one SVG.
+        </p>
+        <div class="status-row">
+          <span class="status" id="display-status">Checking display mode…</span>
+          <button id="install-button" type="button" hidden>Install example</button>
+        </div>
+      </header>
+
+      <section class="panel source-panel">
+        <div>
+          <span class="section-number">01</span>
+          <h2>The source</h2>
+          <p>
+            A single geometric SVG. The plugin recolors it, adds the canvas,
+            applies padding, and produces every asset at build time.
+          </p>
+        </div>
+        <div class="source-mark">
+          <img src="%BASE_URL%mark.svg" alt="Source mark" />
+        </div>
+      </section>
+
+      <section class="assets-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-number">02</span>
+            <h2>Generated assets</h2>
+          </div>
+          <p>Open DevTools and inspect the document head to see the injected tags.</p>
+        </div>
+        <div class="asset-grid" id="asset-grid"></div>
+      </section>
+
+      <section class="panel maskable-panel">
+        <div class="maskable-copy">
+          <span class="section-number">03</span>
+          <h2>Maskable safe zone</h2>
+          <p>
+            The larger maskable padding keeps the mark legible as operating
+            systems crop it into different launcher shapes.
+          </p>
+        </div>
+        <div class="mask-grid">
+          <figure>
+            <div class="mask circle">
+              <img src="%BASE_URL%assets/favicons/pwa-maskable-512x512.png" alt="" />
+            </div>
+            <figcaption>Circle</figcaption>
+          </figure>
+          <figure>
+            <div class="mask squircle">
+              <img src="%BASE_URL%assets/favicons/pwa-maskable-512x512.png" alt="" />
+            </div>
+            <figcaption>Squircle</figcaption>
+          </figure>
+          <figure>
+            <div class="mask rounded">
+              <img src="%BASE_URL%assets/favicons/pwa-maskable-512x512.png" alt="" />
+            </div>
+            <figcaption>Rounded</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="manifest-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-number">04</span>
+            <h2>Manifest output</h2>
+          </div>
+          <p>The generated manifest is fetched from the dev middleware or build output.</p>
+        </div>
+        <pre id="manifest">Loading manifest…</pre>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

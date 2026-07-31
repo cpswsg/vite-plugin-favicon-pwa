@@ -1,0 +1,86 @@
+{
+  "name": "vite-plugin-favicon-pwa",
+  "version": "1.0.0",
+  "description": "Vite plugin that generates favicons, Apple touch icons, PWA icons, and a web app manifest from one SVG.",
+  "keywords": [
+    "favicon",
+    "favicon-generator",
+    "pwa",
+    "pwa-icons",
+    "vite",
+    "vite-plugin-favicon",
+    "vite-plugin",
+    "manifest",
+    "web-app-manifest",
+    "svg",
+    "icons",
+    "icon-generator",
+    "installable",
+    "apple-touch-icon",
+    "maskable"
+  ],
+  "homepage": "https://github.com/cpswsg/vite-plugin-favicon-pwa#readme",
+  "bugs": {
+    "url": "https://github.com/cpswsg/vite-plugin-favicon-pwa/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cpswsg/vite-plugin-favicon-pwa.git"
+  },
+  "license": "MIT",
+  "author": "Cynthia Swain-Sugarman <cynthia@swainsugarman.com> (https://cynthia.swainsugarman.com/)",
+  "packageManager": "npm@12.0.2",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "example:build": "npm run build && vite build --config example/vite.config.ts",
+    "example:dev": "npm run build && vite --config example/vite.config.ts",
+    "lint": "oxlint --deny-warnings .",
+    "test": "vitest run",
+    "test:package": "node scripts/test-package.mjs",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p example/tsconfig.json",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run test:package"
+  },
+  "peerDependencies": {
+    "vite": ">=6"
+  },
+  "dependencies": {
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "oxlint": "^1.76.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true
+  }
+}

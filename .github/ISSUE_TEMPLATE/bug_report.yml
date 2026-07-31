@@ -1,0 +1,61 @@
+name: Bug report
+description: Report something that is not working as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Please fill in as much as you can so the issue can be reproduced.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checks
+      options:
+        - label: I searched existing issues and this has not been reported.
+          required: true
+        - label: I am on the latest version of `vite-plugin-favicon-pwa`.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: The generated manifest omits the maskable icon, but I expected...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Ideally a minimal repo or the exact commands. Include your plugin config from `vite.config.ts`.
+      placeholder: |
+        1. Configure the plugin with `faviconPwa({ ... })`
+        2. Run `vite build`
+        3. Inspect `dist/`
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: source-svg
+    attributes:
+      label: Source SVG (if relevant)
+      description: If the bug relates to icon generation, paste the SVG or describe its dimensions and contents.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Run the versions below and paste the output.
+      value: |
+        - vite-plugin-favicon-pwa:
+        - vite:
+        - node:
+        - OS:
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Paste any build output or errors. This is automatically formatted as code.
+      render: shell
