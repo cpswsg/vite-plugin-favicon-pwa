@@ -4,7 +4,7 @@
 
 [![npm](https://img.shields.io/npm/v/vite-plugin-favicon-pwa)](https://www.npmjs.com/package/vite-plugin-favicon-pwa)
 [![CI](https://github.com/cpswsg/vite-plugin-favicon-pwa/actions/workflows/ci.yml/badge.svg)](https://github.com/cpswsg/vite-plugin-favicon-pwa/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/vite-plugin-favicon-pwa)](./LICENSE)
+[![license](https://img.shields.io/npm/l/vite-plugin-favicon-pwa)](./LICENSE.md)
 
 **One SVG in. Every favicon and PWA icon out.**
 
