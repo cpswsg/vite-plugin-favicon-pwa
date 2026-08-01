@@ -38,8 +38,7 @@ jobs:
         run: npm ci
 
       - name: Publish package
+        # Authenticates via npm trusted publishing (OIDC), using the id-token
+        # permission above. No token needed, and npm attaches a provenance
+        # attestation automatically.
         run: npm publish
-        env:
-          # Used to bootstrap 1.0.0. Once npm trusted publishing is configured,
-          # npm prefers OIDC and this secret can be removed.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
