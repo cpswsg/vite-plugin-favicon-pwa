@@ -171,6 +171,7 @@ Strokes are not recolored.
 | `shortName`       | `string` | (falls back to `name`)      | PWA manifest `short_name`, and the apple web app title.                                        |
 | `description`     | `string` | (omitted)                   | Optional PWA manifest `description`.                                                           |
 | `themeColor`      | `string` | `#15110b`                   | `theme-color` meta and manifest `theme_color`.                                                 |
+| `manifestCrossOrigin` | `string` | (omitted)               | `crossorigin` on the manifest `<link>`: `anonymous` or `use-credentials`. Set `use-credentials` when the manifest is behind cookie auth. |
 | `lang`            | `string` | `en`                        | Manifest language tag (BCP 47).                                                                |
 | `dir`             | `string` | `auto`                      | Direction of localizable manifest strings: `ltr`, `rtl`, or automatic inference.               |
 
@@ -240,6 +241,25 @@ faviconPwa({
   appRoot: 'https://app.example.com/',
 })
 ```
+
+### Manifests behind cookie auth
+
+The manifest is always fetched as a CORS request, and the link's `crossorigin`
+attribute selects only the credentials mode. Leaving it off is the same as
+`anonymous`: credentials mode `same-origin`, so cookies ride along on a
+same-origin manifest and are dropped on a cross-origin one. If the manifest
+sits on another origin and requires cookies, ask for them:
+
+```ts
+faviconPwa({
+  name: 'My App',
+  manifestCrossOrigin: 'use-credentials',
+})
+```
+
+That server must then answer with `Access-Control-Allow-Credentials: true` and
+name the document origin in `Access-Control-Allow-Origin`, since a wildcard is
+rejected for credentialed requests.
 
 ## FAQ
 

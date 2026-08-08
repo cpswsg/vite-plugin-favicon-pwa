@@ -33,6 +33,10 @@ const ASSET_NAMES = [
   'manifest.webmanifest',
 ];
 
+const linkTags = (html: string) => html.match(/<link[^>]*>/g) ?? [];
+const pluginLinks = (html: string) => linkTags(html).filter((tag) => tag.includes(DIR));
+const manifestLink = (html: string) => pluginLinks(html).find((tag) => tag.includes('rel="manifest"')) ?? '';
+
 const projects: string[] = [];
 
 afterAll(() => {
@@ -219,6 +223,29 @@ describe('faviconPwa build', () => {
     expect(out.manifest.id).toBe('https://app.example.com/');
     expect(out.manifest.start_url).toBe('https://app.example.com/');
     expect(out.manifest.scope).toBe('https://app.example.com/');
+  }, 30000);
+
+  it('rejects a manifest crossorigin value the CORS settings attribute does not define', () => {
+    expect(() =>
+      faviconPwa({ name: 'Fixture', manifestCrossOrigin: 'credentials' as never }),
+    ).toThrow('"manifestCrossOrigin"');
+  });
+
+  it('omits crossorigin on the manifest link by default', async () => {
+    const out = await buildFixture('/', { name: 'Fixture App' });
+
+    expect(manifestLink(out.html)).not.toBe('');
+    expect(manifestLink(out.html)).not.toContain('crossorigin');
+  }, 30000);
+
+  it('carries credentials to a cookie-authed manifest when asked', async () => {
+    const out = await buildFixture('https://cdn.example.com/static/', {
+      name: 'Fixture App',
+      manifestCrossOrigin: 'use-credentials',
+    });
+
+    expect(manifestLink(out.html)).toContain('crossorigin="use-credentials"');
+    expect(pluginLinks(out.html).filter((tag) => tag.includes('crossorigin'))).toHaveLength(1);
   }, 30000);
 
   it('does not generate or emit browser assets during an SSR build', async () => {

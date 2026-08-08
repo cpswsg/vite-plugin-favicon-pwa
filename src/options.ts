@@ -27,6 +27,8 @@ export interface FaviconsOptions {
   shortName?: string;
   description?: string;
   themeColor?: string;
+  /** `crossorigin` on the manifest link. Set `use-credentials` for a cookie-authed manifest. */
+  manifestCrossOrigin?: 'anonymous' | 'use-credentials';
   /** Manifest language tag (BCP 47). */
   lang?: string;
   /** Base direction for localizable manifest strings. */

@@ -45,6 +45,14 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
   validateFraction('maskablePadding', false);
   validateFraction('radius', true);
 
+  if (
+    userOptions.manifestCrossOrigin != null &&
+    userOptions.manifestCrossOrigin !== 'anonymous' &&
+    userOptions.manifestCrossOrigin !== 'use-credentials'
+  ) {
+    throw new TypeError('vite-plugin-favicon-pwa: "manifestCrossOrigin" must be "anonymous" or "use-credentials".');
+  }
+
   const options = { ...DEFAULTS, ...userOptions };
   // Normalise colour inputs so oklch() works everywhere sharp/the manifest read
   // them (resize background, SVG fills, theme colour). Hex/rgb/named pass through.
@@ -88,7 +96,14 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
       { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.ico`, sizes: '16x16 32x32 48x48' } },
       { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.svg`, type: 'image/svg+xml' } },
       { tag: 'link', attrs: { rel: 'apple-touch-icon', href: `${base}apple-touch-icon.png` } },
-      { tag: 'link', attrs: { rel: 'manifest', href: `${base}manifest.webmanifest` } },
+      {
+        tag: 'link',
+        attrs: {
+          rel: 'manifest',
+          href: `${base}manifest.webmanifest`,
+          ...(options.manifestCrossOrigin ? { crossorigin: options.manifestCrossOrigin } : {}),
+        },
+      },
       { tag: 'meta', attrs: { name: 'theme-color', content: options.themeColor } },
       { tag: 'meta', attrs: { name: 'mobile-web-app-capable', content: 'yes' } },
       { tag: 'meta', attrs: { name: 'apple-mobile-web-app-capable', content: 'yes' } },
