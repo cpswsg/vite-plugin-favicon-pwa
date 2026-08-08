@@ -225,6 +225,25 @@ describe('faviconPwa build', () => {
     expect(out.manifest.scope).toBe('https://app.example.com/');
   }, 30000);
 
+  it('treats an explicitly undefined option as absent', async () => {
+    const out = await buildFixture('/', {
+      name: 'Fixture App',
+      padding: undefined,
+      radius: undefined,
+      background: undefined,
+      outDir: undefined,
+      themeColor: undefined,
+      lang: undefined,
+      dir: undefined,
+    });
+
+    const omitted = await buildFixture('/', { name: 'Fixture App' });
+
+    expect(out.svg).not.toContain('NaN');
+    expect(out.svg).toBe(omitted.svg);
+    expect(out.manifest).toEqual(omitted.manifest);
+  }, 30000);
+
   it('rejects a manifest crossorigin value the CORS settings attribute does not define', () => {
     expect(() =>
       faviconPwa({ name: 'Fixture', manifestCrossOrigin: 'credentials' as never }),

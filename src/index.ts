@@ -32,9 +32,13 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
     throw new TypeError('vite-plugin-favicon-pwa: "name" is required and must not be empty.');
   }
 
+  const provided = Object.fromEntries(
+    Object.entries(userOptions).filter(([, value]) => value != null),
+  ) as Partial<FaviconsOptions>;
+  const options = { ...DEFAULTS, ...provided, name: userOptions.name };
+
   const validateFraction = (key: 'padding' | 'maskablePadding' | 'radius', upperInclusive: boolean) => {
-    const value = userOptions[key];
-    if (value == null) return;
+    const value = options[key];
     const upperValid = upperInclusive ? value <= 0.5 : value < 0.5;
     if (!Number.isFinite(value) || value < 0 || !upperValid) {
       const range = upperInclusive ? 'between 0 and 0.5' : 'at least 0 and less than 0.5';
@@ -46,14 +50,13 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
   validateFraction('radius', true);
 
   if (
-    userOptions.manifestCrossOrigin != null &&
-    userOptions.manifestCrossOrigin !== 'anonymous' &&
-    userOptions.manifestCrossOrigin !== 'use-credentials'
+    options.manifestCrossOrigin !== undefined &&
+    options.manifestCrossOrigin !== 'anonymous' &&
+    options.manifestCrossOrigin !== 'use-credentials'
   ) {
     throw new TypeError('vite-plugin-favicon-pwa: "manifestCrossOrigin" must be "anonymous" or "use-credentials".');
   }
 
-  const options = { ...DEFAULTS, ...userOptions };
   // Normalise colour inputs so oklch() works everywhere sharp/the manifest read
   // them (resize background, SVG fills, theme colour). Hex/rgb/named pass through.
   options.background = oklchToRgb(options.background);
