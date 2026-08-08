@@ -64,6 +64,29 @@ try {
     if (!existsSync(join(consumer, 'dist/assets/favicons/manifest.webmanifest'))) {
       throw new Error(`Vite ${viteRange} consumer did not emit the manifest.`);
     }
+    const shipped = readFileSync(
+      join(consumer, 'node_modules', manifest.name, 'dist/generate.js'),
+      'utf8',
+    );
+    const staticImports = shipped.match(/^\s*import\s[^\n]*from\s*['"](sharp|png-to-ico)['"]/gm);
+    if (staticImports) {
+      throw new Error(`Image dependencies must be imported lazily, found: ${staticImports.join(', ')}`);
+    }
+
+    writeFileSync(
+      join(consumer, 'lazy-sharp.mjs'),
+      [
+        "const loaded = () => process.report.getReport().sharedObjects.filter((s) => /vips|sharp/i.test(s)).length;",
+        "await import('vite-plugin-favicon-pwa');",
+        'const afterPlugin = loaded();',
+        "await import('sharp');",
+        'const afterSharp = loaded();',
+        "if (afterPlugin > 0) throw new Error('sharp was loaded eagerly by importing the plugin');",
+        "if (afterSharp === 0) throw new Error('probe cannot detect sharp on this platform; the check would pass vacuously');",
+      ].join('\n'),
+    );
+    execFileSync(process.execPath, [join(consumer, 'lazy-sharp.mjs')], { cwd: consumer, stdio: 'inherit' });
+
     const viteVersion = JSON.parse(readFileSync(join(consumer, 'node_modules/vite/package.json'), 'utf8')).version;
     console.log(`Verified ${basename(tarball)} with Vite ${viteVersion}`);
   }

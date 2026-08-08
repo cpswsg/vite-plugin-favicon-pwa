@@ -1,7 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import sharp from 'sharp';
-import pngToIco from 'png-to-ico';
 import { parseViewBox, extractRootAttrs, stripInheritedFill, extractInner, recolorFills, squareSvg } from './svg.js';
 import { manifestAppRoot } from './paths.js';
 import type { ResolvedFaviconsOptions } from './options.js';
@@ -61,6 +59,8 @@ export async function generate(
     padding: options.padding,
     innerAttrs,
   });
+
+  const [{ default: sharp }, { default: pngToIco }] = await Promise.all([import('sharp'), import('png-to-ico')]);
 
   const png = (svg: string, size: number) =>
     sharp(Buffer.from(svg), { density: 384 })
