@@ -127,6 +127,24 @@ describe('extractInner', () => {
     const raw = '<!-- <svg bogus> --><svg aria-label="a > b"><g/></svg>';
     expect(extractInner(raw)).toBe('<g/>');
   });
+
+  it('drops an exporter banner trailing the closing tag', () => {
+    expect(extractInner('<svg viewBox="0 0 1 1"><g/></svg>\n<!-- Generator: X -->\n')).toBe('<g/>');
+  });
+
+  it('keeps a nested svg element and stops at the root close', () => {
+    const raw = '<svg viewBox="0 0 1 1"><svg y="1"><g/></svg><path/></svg><!-- x -->';
+    expect(extractInner(raw)).toBe('<svg y="1"><g/></svg><path/>');
+  });
+
+  it('does not stop at a closing tag inside a comment or an attribute value', () => {
+    expect(extractInner('<svg><!-- </svg> --><g/></svg>')).toBe('<!-- </svg> --><g/>');
+    expect(extractInner('<svg><g data-x="</svg>"/></svg>')).toBe('<g data-x="</svg>"/>');
+  });
+
+  it('returns no inner markup for a self-closing root', () => {
+    expect(extractInner('<svg viewBox="0 0 1 1"/>\n<!-- x -->')).toBe('');
+  });
 });
 
 describe('recolorFills', () => {

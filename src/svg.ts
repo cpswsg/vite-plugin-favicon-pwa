@@ -27,7 +27,24 @@ const LAYOUT_ATTRS = new Set(['xmlns', 'width', 'height', 'viewbox', 'x', 'y', '
 // (viewBox/preserveAspectRatio have no CSS-property form, so nothing to strip.)
 const LAYOUT_STYLE_PROP = /^(?:width|height|x|y)\s*:/i;
 
-function findRootOpen(raw: string): { end: number; tag: string } | undefined {
+// Walk a tag from its `<` to the `>` that closes it, skipping quoted attribute
+// values so a `>` inside one doesn't end the tag early.
+function scanTag(raw: string, start: number): { end: number; selfClosing: boolean } | undefined {
+  let quote: '"' | "'" | undefined;
+  for (let i = start; i < raw.length; i++) {
+    const char = raw[i];
+    if (quote) {
+      if (char === quote) quote = undefined;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === '>') {
+      return { end: i + 1, selfClosing: raw[i - 1] === '/' };
+    }
+  }
+  return undefined;
+}
+
+function findRootOpen(raw: string): { end: number; tag: string; selfClosing: boolean } | undefined {
   const starts = /<svg\b/gi;
   let match: RegExpExecArray | null;
   while ((match = starts.exec(raw))) {
@@ -35,18 +52,47 @@ function findRootOpen(raw: string): { end: number; tag: string } | undefined {
     const commentEnd = raw.lastIndexOf('-->', match.index);
     if (commentStart > commentEnd) continue;
 
-    let quote: '"' | "'" | undefined;
-    for (let i = match.index; i < raw.length; i++) {
-      const char = raw[i];
-      if (quote) {
-        if (char === quote) quote = undefined;
-      } else if (char === '"' || char === "'") {
-        quote = char;
-      } else if (char === '>') {
-        return { end: i + 1, tag: raw.slice(match.index, i + 1) };
-      }
+    const tag = scanTag(raw, match.index);
+    if (!tag) return undefined;
+    return { end: tag.end, tag: raw.slice(match.index, tag.end), selfClosing: tag.selfClosing };
+  }
+  return undefined;
+}
+
+function isSvgTagName(raw: string, at: number): boolean {
+  if (raw.slice(at, at + 3).toLowerCase() !== 'svg') return false;
+  const after = raw[at + 3];
+  return after === undefined || after === '>' || after === '/' || /\s/.test(after);
+}
+
+// Index of the `</svg>` closing the root element, counting nested <svg>
+// elements and skipping comments and CDATA. Undefined if it is never closed.
+function findRootClose(raw: string, from: number): number | undefined {
+  let depth = 1;
+  let i = from;
+  while (i < raw.length) {
+    const next = raw.indexOf('<', i);
+    if (next < 0) return undefined;
+
+    if (raw.startsWith('<!--', next)) {
+      const end = raw.indexOf('-->', next + 4);
+      if (end < 0) return undefined;
+      i = end + 3;
+    } else if (raw.startsWith('<![CDATA[', next)) {
+      const end = raw.indexOf(']]>', next + 9);
+      if (end < 0) return undefined;
+      i = end + 3;
+    } else if (raw[next + 1] === '/' && isSvgTagName(raw, next + 2)) {
+      const tag = scanTag(raw, next);
+      if (!tag) return undefined;
+      if (--depth === 0) return next;
+      i = tag.end;
+    } else {
+      const tag = scanTag(raw, next);
+      if (!tag) return undefined;
+      if (isSvgTagName(raw, next + 1) && !tag.selfClosing) depth++;
+      i = tag.end;
     }
-    return undefined;
   }
   return undefined;
 }
@@ -110,7 +156,9 @@ export function stripInheritedFill(attrs: string): string {
 export function extractInner(raw: string): string {
   const open = findRootOpen(raw);
   if (!open) return raw;
-  return raw.slice(open.end).replace(/<\/svg>\s*$/i, '');
+  if (open.selfClosing) return '';
+  const close = findRootClose(raw, open.end);
+  return close == null ? raw.slice(open.end) : raw.slice(open.end, close);
 }
 
 // Swap the mark's actual fill(s) for `foreground` regardless of the source's
