@@ -1,10 +1,11 @@
 import { afterAll, describe, it, expect } from 'vitest';
 import { build } from 'vite';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import sharp from 'sharp';
 import faviconPwa from '../src/index';
+import { GENERATED_ASSET_NAMES } from '../src/generate';
 import type { FaviconsOptions } from '../src/index';
 
 const SOURCE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#3366ff" fill-rule="evenodd" style="width:24px;height:24px">
@@ -43,7 +44,42 @@ afterAll(() => {
   for (const dir of projects) rmSync(dir, { recursive: true, force: true });
 });
 
-async function buildFixture(base: string, options: FaviconsOptions) {
+type ConfigCase = {
+  publicDirName?: string | null;
+  ssr?: boolean;
+  command?: 'build' | 'serve';
+  copyPublicDir?: boolean;
+  publicDirs?: string[];
+};
+
+function resolveConfig(
+  options: Omit<FaviconsOptions, 'name'>,
+  publicFiles: string[],
+  { publicDirName = 'public', ssr = false, command = 'build', copyPublicDir = true, publicDirs = [] }: ConfigCase = {},
+) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-public-')));
+  projects.push(root);
+  const publicDir = publicDirName ? join(root, publicDirName) : '';
+  if (publicDir) {
+    mkdirSync(publicDir, { recursive: true });
+    for (const name of publicFiles) writeFileSync(join(publicDir, name), 'x');
+    for (const name of publicDirs) mkdirSync(join(publicDir, name), { recursive: true });
+  }
+
+  const warnings: string[] = [];
+  const plugin = faviconPwa({ name: 'Fixture App', source: 'logo.svg', ...options });
+  (plugin.configResolved as (c: unknown) => void)({
+    root,
+    base: '/',
+    command,
+    publicDir,
+    build: { outDir: 'dist', copyPublicDir, ...(ssr ? { ssr: 'entry.js' } : {}) },
+    logger: { warn: (message: string) => warnings.push(message) },
+  });
+  return { root, publicDir, warnings };
+}
+
+async function buildFixture(base: string, options: FaviconsOptions, assetsDir = DIR) {
   // realpathSync canonicalizes the macOS /var -> /private/var tmp symlink so
   // Vite's realpath-based html emit doesn't compute an escaping output path.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-')));
@@ -61,14 +97,20 @@ async function buildFixture(base: string, options: FaviconsOptions) {
     build: { outDir, emptyOutDir: true, reportCompressedSize: false },
   });
 
-  const read = (name: string) => readFileSync(join(outDir, DIR, name), 'utf8');
+  const read = (name: string) => readFileSync(join(outDir, assetsDir, name), 'utf8');
   return {
     outDir,
+    assetDir: join(outDir, assetsDir),
     html: readFileSync(join(outDir, 'index.html'), 'utf8'),
     svg: read('favicon.svg'),
     manifest: JSON.parse(read('manifest.webmanifest')),
   };
 }
+
+const hrefs = (html: string) =>
+  linkTags(html)
+    .filter((tag) => /rel="(?:icon|apple-touch-icon|manifest)"/.test(tag))
+    .map((tag) => tag.match(/href="([^"]*)"/)?.[1] ?? '');
 
 describe('faviconPwa build', () => {
   it('requires a non-empty app name', () => {
@@ -84,8 +126,22 @@ describe('faviconPwa build', () => {
   });
 
   it('rejects unsafe or ambiguous output directories', () => {
-    for (const outDir of ['', '/', '.', '../favicons', 'assets//favicons', 'assets\\favicons', 'assets/favicons?x']) {
-      expect(() => faviconPwa({ name: 'Fixture', outDir })).toThrow('"outDir"');
+    for (const outDir of [
+      '..',
+      '../favicons',
+      './favicons',
+      'assets//favicons',
+      'assets\\favicons',
+      'assets/favicons?x',
+      'assets favicons',
+    ]) {
+      expect(() => faviconPwa({ name: 'Fixture', outDir }), outDir).toThrow('"outDir"');
+    }
+  });
+
+  it('accepts every spelling of the site root as the output directory', () => {
+    for (const outDir of ['', '.', '/', './']) {
+      expect(() => faviconPwa({ name: 'Fixture', outDir }), outDir).not.toThrow();
     }
   });
 
@@ -266,6 +322,179 @@ describe('faviconPwa build', () => {
     expect(manifestLink(out.html)).toContain('crossorigin="use-credentials"');
     expect(pluginLinks(out.html).filter((tag) => tag.includes('crossorigin'))).toHaveLength(1);
   }, 30000);
+
+  it('emits the asset set at the site root with root-relative hrefs', async () => {
+    const out = await buildFixture('/', { name: 'Fixture App', outDir: '' }, '');
+
+    expect([...readdirSync(out.outDir)].sort()).toEqual([...ASSET_NAMES, 'index.html'].sort());
+    expect([...GENERATED_ASSET_NAMES].sort()).toEqual([...ASSET_NAMES].sort());
+
+    expect(hrefs(out.html)).toEqual([
+      '/favicon.ico',
+      '/favicon.svg',
+      '/apple-touch-icon.png',
+      '/manifest.webmanifest',
+    ]);
+    expect(out.manifest.id).toBe('/');
+    expect(out.manifest.start_url).toBe('/');
+    expect(out.manifest.scope).toBe('/');
+    expect(out.manifest.icons[0].src).toBe('pwa-192x192.png');
+  }, 30000);
+
+  it('resolves root output under an absolute subpath base', async () => {
+    const out = await buildFixture('/subpath/', { name: 'Fixture App', outDir: '/' }, '');
+
+    expect(hrefs(out.html)).toEqual([
+      '/subpath/favicon.ico',
+      '/subpath/favicon.svg',
+      '/subpath/apple-touch-icon.png',
+      '/subpath/manifest.webmanifest',
+    ]);
+    expect(out.manifest.start_url).toBe('/subpath/');
+  }, 30000);
+
+  it('keeps root output document-relative under a relative base', async () => {
+    const out = await buildFixture('./', { name: 'Fixture App', outDir: '.' }, '');
+
+    expect(hrefs(out.html)).toEqual([
+      './favicon.ico',
+      './favicon.svg',
+      './apple-touch-icon.png',
+      './manifest.webmanifest',
+    ]);
+    expect(out.manifest.id).toBe('./');
+    expect(out.manifest.start_url).toBe('./');
+    expect(out.manifest.scope).toBe('./');
+  }, 30000);
+
+  it('keeps root output document-relative under an empty base, which Vite resolves to "./"', async () => {
+    const out = await buildFixture('', { name: 'Fixture App', outDir: './' }, '');
+
+    expect(hrefs(out.html)).toEqual([
+      './favicon.ico',
+      './favicon.svg',
+      './apple-touch-icon.png',
+      './manifest.webmanifest',
+    ]);
+    expect(out.manifest.start_url).toBe('./');
+  }, 30000);
+
+  it('omits app navigation URLs for root output on a full-URL base', async () => {
+    const out = await buildFixture('https://cdn.example.com/static/', { name: 'Fixture App', outDir: '' }, '');
+
+    expect(hrefs(out.html)).toEqual([
+      'https://cdn.example.com/static/favicon.ico',
+      'https://cdn.example.com/static/favicon.svg',
+      'https://cdn.example.com/static/apple-touch-icon.png',
+      'https://cdn.example.com/static/manifest.webmanifest',
+    ]);
+    expect(out.manifest).not.toHaveProperty('id');
+    expect(out.manifest).not.toHaveProperty('start_url');
+    expect(out.manifest).not.toHaveProperty('scope');
+  }, 30000);
+
+  it('warns when a public directory file collides with a generated asset at the site root', () => {
+    const { root, publicDir, warnings } = resolveConfig({ outDir: '' }, ['favicon.svg', 'favicon.ico', 'mark.svg']);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"outDir"');
+    expect(warnings[0]).toContain(join(root, 'dist'));
+    expect(warnings[0]).toContain(join(publicDir, 'favicon.svg'));
+    expect(warnings[0]).toContain(join(publicDir, 'favicon.ico'));
+    expect(warnings[0]).not.toContain('mark.svg');
+    expect(warnings[0]).not.toContain('case');
+  });
+
+  it('stays quiet about the public directory when the assets have their own folder', () => {
+    expect(resolveConfig({ outDir: 'assets/favicons' }, ['favicon.svg']).warnings).toEqual([]);
+    expect(resolveConfig({}, ['favicon.svg']).warnings).toEqual([]);
+  });
+
+  it('tells a build the generated set overwrites the public file, not that it is a toss-up', () => {
+    const { root, warnings } = resolveConfig({ outDir: '' }, ['favicon.ico'], { command: 'build' });
+
+    expect(warnings[0]).toContain('overwrit');
+    expect(warnings[0]).toContain(join(root, 'dist'));
+    expect(warnings[0]).not.toMatch(/not defined|write order/);
+  });
+
+  it('tells a build a public directory of the same name fails it, rather than being overwritten', () => {
+    const { root, publicDir, warnings } = resolveConfig({ outDir: '' }, [], {
+      command: 'build',
+      publicDirs: ['favicon.ico'],
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('fails the build');
+    expect(warnings[0]).toContain(join(publicDir, 'favicon.ico'));
+    expect(warnings[0]).toContain(join(root, 'dist'));
+    expect(warnings[0]).not.toContain('overwrites');
+  });
+
+  it('separates a blocking public directory from the files the build overwrites', () => {
+    const { publicDir, warnings } = resolveConfig({ outDir: '' }, ['favicon.svg'], {
+      command: 'build',
+      publicDirs: ['favicon.ico'],
+    });
+
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain('fails the build');
+    expect(warnings[0]).toContain(join(publicDir, 'favicon.ico'));
+    expect(warnings[0]).not.toContain(join(publicDir, 'favicon.svg'));
+    expect(warnings[1]).toContain('overwrites');
+    expect(warnings[1]).toContain(join(publicDir, 'favicon.svg'));
+    expect(warnings[1]).not.toContain(join(publicDir, 'favicon.ico'));
+  });
+
+  it('treats a public directory like a file in dev, where the middleware shadows either', () => {
+    const { publicDir, warnings } = resolveConfig({ outDir: '' }, ['favicon.svg'], {
+      command: 'serve',
+      publicDirs: ['favicon.ico'],
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('dev server');
+    expect(warnings[0]).toContain(join(publicDir, 'favicon.ico'));
+    expect(warnings[0]).toContain(join(publicDir, 'favicon.svg'));
+  });
+
+  it('tells the dev server the generated set shadows the public file', () => {
+    const { root, warnings } = resolveConfig({ outDir: '' }, ['favicon.ico'], { command: 'serve' });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('dev server');
+    expect(warnings[0]).not.toContain(join(root, 'dist'));
+  });
+
+  it('stays quiet at build when the public directory is not copied', () => {
+    expect(resolveConfig({ outDir: '' }, ['favicon.ico'], { command: 'build', copyPublicDir: false }).warnings).toEqual(
+      [],
+    );
+  });
+
+  it('still warns in dev when the public directory is not copied, since the copy is a build step', () => {
+    expect(
+      resolveConfig({ outDir: '' }, ['favicon.ico'], { command: 'serve', copyPublicDir: false }).warnings,
+    ).toHaveLength(1);
+  });
+
+  it('warns for a public directory file that differs only in case', () => {
+    const { publicDir, warnings } = resolveConfig({ outDir: '' }, ['Favicon.ICO']);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(join(publicDir, 'Favicon.ICO'));
+    expect(warnings[0]).toContain('case');
+  });
+
+  it('stays quiet about the public directory during an SSR build, which emits nothing', () => {
+    expect(resolveConfig({ outDir: '' }, ['favicon.svg'], { ssr: true }).warnings).toEqual([]);
+  });
+
+  it('stays quiet when no public directory file shares a generated name', () => {
+    expect(resolveConfig({ outDir: '' }, ['mark.svg', 'robots.txt']).warnings).toEqual([]);
+    expect(resolveConfig({ outDir: '' }, []).warnings).toEqual([]);
+    expect(resolveConfig({ outDir: '' }, ['favicon.svg'], { publicDirName: null }).warnings).toEqual([]);
+  });
 
   it('does not generate or emit browser assets during an SSR build', async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-ssr-')));

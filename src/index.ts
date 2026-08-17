@@ -1,9 +1,10 @@
-import { resolve, extname } from 'node:path';
-import type { Plugin } from 'vite';
+import { readdirSync, type Dirent } from 'node:fs';
+import { join, resolve, extname } from 'node:path';
+import type { Plugin, ResolvedConfig } from 'vite';
 import { oklchToRgb } from './color.js';
-import { generate } from './generate.js';
+import { generate, GENERATED_ASSET_NAMES } from './generate.js';
 import { createAssetCoordinator } from './coordinator.js';
-import { resolveAssetName } from './paths.js';
+import { assetBase, normalizeOutDir, resolveAssetName } from './paths.js';
 import { DEFAULTS, type FaviconsOptions } from './options.js';
 
 export type { FaviconsOptions } from './options.js';
@@ -14,6 +15,8 @@ const MIME: Record<string, string> = {
   png: 'image/png',
   webmanifest: 'application/manifest+json',
 };
+
+const GENERATED = new Set<string>(GENERATED_ASSET_NAMES);
 
 type Tag = { tag: string; attrs: Record<string, string> };
 
@@ -63,20 +66,7 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
   options.themeColor = oklchToRgb(options.themeColor);
   if (options.foreground) options.foreground = oklchToRgb(options.foreground);
 
-  // Output folder within the bundle, e.g. "assets/favicons". Keep this a
-  // URL-safe Rollup file-name prefix: empty/root output and traversal segments
-  // would otherwise create protocol-relative hrefs or escaping bundle paths.
-  const dir = options.outDir.replace(/^\/+|\/+$/g, '');
-  const segments = dir.split('/');
-  if (
-    !dir ||
-    options.outDir.includes('\\') ||
-    segments.some((segment) => !segment || segment === '.' || segment === '..' || !/^[a-zA-Z0-9._~-]+$/.test(segment))
-  ) {
-    throw new TypeError(
-      'vite-plugin-favicon-pwa: "outDir" must be a non-empty, URL-safe relative directory without "." or ".." segments.',
-    );
-  }
+  const dir = normalizeOutDir(options.outDir);
 
   let root = process.cwd();
   // Vite's public base path (e.g. "/", "/subpath/", or "./" / "" for a relative
@@ -85,7 +75,7 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
   let ssrBuild = false;
   // Public URL prefix for the asset <link> hrefs, incl. Vite's base so subpath
   // deploys resolve, e.g. "/subpath/assets/favicons/".
-  let base = `/${dir}/`;
+  let base = assetBase('/', dir);
   let links: Tag[] = [];
 
   // Regenerate the asset set on demand; the coordinator commits only the newest
@@ -94,7 +84,7 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
 
   // (Re)build the URL-dependent tags once Vite's base is known.
   const configure = () => {
-    base = `${viteBase}${dir}/`;
+    base = assetBase(viteBase, dir);
     links = [
       { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.ico`, sizes: '16x16 32x32 48x48' } },
       { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.svg`, type: 'image/svg+xml' } },
@@ -114,6 +104,45 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
     ];
   };
   configure();
+
+  // Root outDir and publicDir target the same path and the loser is silent. At
+  // build, Vite copies publicDir in prepareOutDir and Rollup writes over it; in
+  // dev, this middleware is registered ahead of servePublicMiddleware. The
+  // generated asset wins both ways, which is why serve still warns when
+  // copyPublicDir is off: the shadowing is the middleware's, not the copy's.
+  const warnPublicDirCollisions = (config: ResolvedConfig) => {
+    const building = config.command === 'build';
+    if (dir || !config.publicDir || config.build.ssr) return;
+    if (building && !config.build.copyPublicDir) return;
+    let entries: Dirent[] = [];
+    try {
+      entries = readdirSync(config.publicDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const generated = new Set<string>(GENERATED_ASSET_NAMES.map((name) => name.toLowerCase()));
+    const collisions = entries.filter((entry) => generated.has(entry.name.toLowerCase()));
+    if (!collisions.length) return;
+    const outDirPath = resolve(config.root, config.build.outDir);
+    const warn = (group: Dirent[], outcome: string) => {
+      if (!group.length) return;
+      const paths = group.map((entry) => join(config.publicDir, entry.name)).join(', ');
+      const inexact = group.some((entry) => !generated.has(entry.name));
+      config.logger.warn(
+        `vite-plugin-favicon-pwa: "outDir" is the site root, so ${outcome}: ${paths}. ` +
+          'Rename those entries or move them out of the public directory.' +
+          (inexact ? ' Names differing only in case collide on macOS and Windows.' : ''),
+      );
+    };
+    const blocking = building ? collisions.filter((entry) => entry.isDirectory()) : [];
+    warn(blocking, `writing the generated favicon set over them in ${outDirPath} fails the build`);
+    warn(
+      collisions.filter((entry) => !blocking.includes(entry)),
+      building
+        ? `the generated favicon set overwrites them in ${outDirPath}`
+        : 'the dev server serves the generated favicon set in their place',
+    );
+  };
 
   // Escape a value for an HTML attribute (title/name may carry author text).
   const esc = (v: string) =>
@@ -139,6 +168,7 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
       viteBase = config.base ?? '/';
       ssrBuild = Boolean(config.build.ssr);
       configure();
+      warnPublicDirCollisions(config);
     },
     buildStart() {
       const isClient = typeof this.environment?.name === 'string' ? this.environment.name === 'client' : !ssrBuild;
@@ -172,7 +202,7 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
         const method = req.method ?? 'GET';
         if (method !== 'GET' && method !== 'HEAD') return next();
         const name = resolveAssetName(req.url, viteBase, dir);
-        if (name == null) return next();
+        if (name == null || !GENERATED.has(name)) return next();
         const ext = extname(name).slice(1);
         if (!MIME[ext]) return next();
         coordinator
@@ -195,7 +225,7 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
       const assets = coordinator.get();
       if (!assets) return;
       for (const [name, source] of assets) {
-        this.emitFile({ type: 'asset', fileName: `${dir}/${name}`, source });
+        this.emitFile({ type: 'asset', fileName: dir ? `${dir}/${name}` : name, source });
       }
     },
     transformIndexHtml: {

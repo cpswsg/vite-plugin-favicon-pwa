@@ -4,6 +4,16 @@ import { parseViewBox, extractRootAttrs, stripInheritedFill, extractInner, recol
 import { manifestAppRoot } from './paths.js';
 import type { ResolvedFaviconsOptions } from './options.js';
 
+export const GENERATED_ASSET_NAMES = [
+  'favicon.svg',
+  'favicon.ico',
+  'apple-touch-icon.png',
+  'pwa-192x192.png',
+  'pwa-512x512.png',
+  'pwa-maskable-512x512.png',
+  'manifest.webmanifest',
+] as const;
+
 // Read the source SVG and return a fresh map (bare name -> contents) holding the
 // full favicon + PWA set and the manifest. Returning a new map (rather than
 // mutating a shared one) lets the caller commit only the newest run's result.

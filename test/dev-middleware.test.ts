@@ -60,14 +60,14 @@ function request(middleware: (req: unknown, res: unknown, next: unknown) => void
   });
 }
 
-function setup(svg: string) {
+function setup(svg: string, { base = '/', outDir }: { base?: string; outDir?: string } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-mw-')));
   projects.push(root);
   writeFileSync(join(root, 'logo.svg'), svg);
-  const plugin = faviconPwa({ name: 'Fixture App', source: 'logo.svg' });
+  const plugin = faviconPwa({ name: 'Fixture App', source: 'logo.svg', outDir });
   (plugin.configResolved as (c: { root: string; base: string; build: { ssr?: boolean } }) => void)({
     root,
-    base: '/',
+    base,
     build: {},
   });
   const server = createMockServer();
@@ -97,6 +97,68 @@ describe('dev middleware', () => {
 
     const svg = await request(middleware, '/assets/favicons/favicon.svg');
     expect(svg.headers['Content-Type']).toBe('image/svg+xml');
+  }, 30000);
+
+  it('serves root-level assets when the output directory is the site root', async () => {
+    const { middleware } = setup(logo('#123456'), { outDir: '' });
+
+    const ico = await request(middleware, '/favicon.ico');
+    expect(ico.served).toBe(true);
+    expect(ico.headers['Content-Type']).toBe('image/x-icon');
+
+    const manifest = await request(middleware, '/manifest.webmanifest');
+    expect(manifest.served).toBe(true);
+    expect(manifest.headers['Content-Type']).toBe('application/manifest+json');
+    expect(JSON.parse(String(manifest.body)).start_url).toBe('/');
+
+    const svg = await request(middleware, '/favicon.svg');
+    expect(svg.headers['Content-Type']).toBe('image/svg+xml');
+    expect(String(svg.body)).toContain('fill="#123456"');
+  }, 30000);
+
+  it('serves root-level assets under a subpath base', async () => {
+    const { middleware } = setup(logo('#123456'), { base: '/subpath/', outDir: '/' });
+
+    const ico = await request(middleware, '/subpath/favicon.ico');
+    expect(ico.served).toBe(true);
+    expect(ico.headers['Content-Type']).toBe('image/x-icon');
+
+    const unprefixed = await request(middleware, '/favicon.ico');
+    expect(unprefixed.served).toBe(true);
+
+    const elsewhere = await request(middleware, '/other/favicon.ico');
+    expect(elsewhere.served).toBe(false);
+  }, 30000);
+
+  it('does not generate assets for an unrelated root-level path', async () => {
+    const { middleware } = setup('<svg></svg>', { outDir: '' });
+
+    const bundled = await request(middleware, '/assets/index-abc123.png');
+    expect(bundled.served).toBe(false);
+    expect(bundled.error).toBeUndefined();
+
+    const ours = await request(middleware, '/favicon.ico');
+    expect(ours.error).toBeInstanceOf(Error);
+  }, 30000);
+
+  it('falls through for a public file that is not part of the generated set', async () => {
+    const { middleware } = setup('<svg></svg>', { outDir: '' });
+
+    for (const url of ['/vite.svg', '/logo.png', '/og-image.png', '/site.webmanifest']) {
+      const res = await request(middleware, url);
+      expect(res.served, url).toBe(false);
+      expect(res.error, url).toBeUndefined();
+    }
+  }, 30000);
+
+  it('does not let an unrelated root request surface a generation failure', async () => {
+    const { middleware } = setup('<svg></svg>', { outDir: '' });
+
+    const unrelated = await request(middleware, '/vite.svg');
+    expect(unrelated.error).toBeUndefined();
+
+    const ours = await request(middleware, '/favicon.svg');
+    expect(ours.error).toBeInstanceOf(Error);
   }, 30000);
 
   it('serves HEAD without a body and ignores unsupported methods', async () => {

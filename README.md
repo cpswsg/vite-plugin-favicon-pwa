@@ -160,7 +160,7 @@ Strokes are not recolored.
 | Option            | Type     | Default                     | Description                                                                                   |
 | ----------------- | -------- | --------------------------- | --------------------------------------------------------------------------------------------- |
 | `source`          | `string` | `public/favicon.svg`        | Source SVG, relative to the project root. Must contain a `viewBox`.                            |
-| `outDir`          | `string` | `assets/favicons`           | Non-empty URL-safe output folder, relative to the site root; each segment may use letters, numbers, `.`, `_`, `~`, or `-`. |
+| `outDir`          | `string` | `assets/favicons`           | URL-safe output folder, relative to the site root; each segment may use letters, numbers, `.`, `_`, `~`, or `-`. Use `''`, `'.'`, `'/'`, or `'./'` to write the set to the site root itself. See [Serving from the site root](#serving-from-the-site-root). |
 | `appRoot`         | `string` | (derived from Vite `base`)  | Manifest application root. Set an absolute app URL when `base` points to a CDN.                |
 | `background`      | `string` | `#f7f3ea`                   | Square canvas background, and the maskable icon background.                                    |
 | `foreground`      | `string` | (source colors)             | Recolor explicit and inherited mark fills. Preserves inner `none` and `url()` paints.          |
@@ -185,6 +185,42 @@ Written to `<outDir>` (default `assets/favicons/`):
 - `pwa-192x192.png`, `pwa-512x512.png` — with the configured corner radius
 - `pwa-maskable-512x512.png` — with the larger maskable safe-zone padding
 - `manifest.webmanifest`
+
+## Serving from the site root
+
+Browsers, crawlers, and link-preview bots request `/favicon.ico` at the
+well-known root path without reading `<link rel="icon">`. Set `outDir` to the
+site root to answer them:
+
+```ts
+faviconPwa({ name: 'My App', outDir: '/' });
+```
+
+`''`, `'.'`, `'/'`, and `'./'` all mean the site root. Hrefs, dev-server
+routes, and manifest URLs still honor Vite's `base`, so a `base` of `/app/`
+serves `/app/favicon.ico`.
+
+**Move your source SVG out of `public/` first.** Vite copies `publicDir`
+verbatim into the build output root, which is exactly where root `outDir`
+writes the generated set. The copy runs first and the generated assets are
+written over it, so a file in `public/` named after a generated asset is
+silently replaced by the generated one. In dev the plugin's middleware answers
+first, so the same file is shadowed there. The default `source` is
+`public/favicon.svg`, so the quick-start setup hits this the moment you switch
+to root output:
+
+```ts
+faviconPwa({ name: 'My App', outDir: '/', source: 'src/logo.svg' });
+```
+
+The same applies to a hand-made `public/favicon.ico` or any other file sharing a
+[generated name](#generated-assets): the generated asset wins and yours is lost.
+The plugin warns at startup and names the conflicting paths.
+
+A *directory* in `public/` sharing a generated name is worse than a lost file: a
+generated asset cannot be written over it, so the build fails with a low-level
+write error from the bundler. The plugin warns about those separately, ahead of
+the failure, so the cause is named.
 
 ## Injected tags
 
@@ -227,6 +263,10 @@ relative manifest fields:
   "icons": [{ "src": "pwa-192x192.png" }]
 }
 ```
+
+With a root `outDir` there is nothing to step out of, so under a relative base
+those fields are `./`. Under an absolute base they are the base itself, root
+`outDir` or not: `/` by default, `/app/` for `base: '/app/'`.
 
 When `base` is a full URL (typically a CDN), the manifest omits `id`,
 `start_url`, and `scope`. Those URLs must match the application document's

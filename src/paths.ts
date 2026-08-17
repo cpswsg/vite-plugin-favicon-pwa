@@ -1,3 +1,28 @@
+// Normalize outDir to a bare Rollup file-name prefix: "" for the site root,
+// otherwise a relative path with no surrounding slashes. Every spelling of the
+// root ("", ".", "/", "./") collapses to "" so callers branch on one value.
+export function normalizeOutDir(outDir: string): string {
+  const dir = outDir.replace(/^\/+|\/+$/g, '');
+  if (dir === '' || dir === '.') return '';
+  const segments = dir.split('/');
+  if (
+    outDir.includes('\\') ||
+    segments.some((segment) => !segment || segment === '.' || segment === '..' || !/^[a-zA-Z0-9._~-]+$/.test(segment))
+  ) {
+    throw new TypeError(
+      'vite-plugin-favicon-pwa: "outDir" must be the site root ("", ".", "/", or "./") or a URL-safe relative directory without "." or ".." segments.',
+    );
+  }
+  return dir;
+}
+
+// Concatenating `${viteBase}${dir}/` unconditionally yields "//" at the site
+// root, which a browser reads as protocol-relative and resolves to
+// http://favicon.ico. At the root the prefix is Vite's base verbatim.
+export function assetBase(viteBase: string, dir: string): string {
+  return dir ? `${viteBase}${dir}/` : viteBase;
+}
+
 // The manifest is emitted beside the icons inside `dir`, but its `id`,
 // `start_url`, and `scope` must reference the app root, not the manifest's own
 // directory. For an absolute path-style Vite base ("/", "/app/") the root is
@@ -33,6 +58,11 @@ export function resolveAssetName(rawUrl: string, viteBase: string, dir: string):
   if (viteBase.startsWith('/') && viteBase !== '/' && url.startsWith(viteBase)) {
     url = '/' + url.slice(viteBase.length);
   }
-  const localBase = `/${dir}/`;
-  return url.startsWith(localBase) ? url.slice(localBase.length) : null;
+  const localBase = dir ? `/${dir}/` : '/';
+  if (!url.startsWith(localBase)) return null;
+  const name = url.slice(localBase.length);
+  // One segment only. At the site root localBase is "/", so this is what keeps
+  // the function's "or null if it isn't one of our assets" contract honest on
+  // its own, independent of the caller's generated-set check.
+  return name && !name.includes('/') ? name : null;
 }

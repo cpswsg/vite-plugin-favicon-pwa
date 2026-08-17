@@ -1,5 +1,68 @@
 import { describe, it, expect } from 'vitest';
-import { manifestAppRoot, resolveAssetName } from '../src/paths';
+import { assetBase, manifestAppRoot, normalizeOutDir, resolveAssetName } from '../src/paths';
+
+describe('normalizeOutDir', () => {
+  it('keeps a URL-safe relative directory', () => {
+    expect(normalizeOutDir('assets/favicons')).toBe('assets/favicons');
+    expect(normalizeOutDir('favicons')).toBe('favicons');
+    expect(normalizeOutDir('a.b_c~d-e')).toBe('a.b_c~d-e');
+  });
+
+  it('strips surrounding slashes', () => {
+    expect(normalizeOutDir('/assets/favicons/')).toBe('assets/favicons');
+  });
+
+  it('normalizes every spelling of the site root to one value', () => {
+    for (const spelling of ['', '.', '/', './']) {
+      expect(normalizeOutDir(spelling), spelling).toBe('');
+    }
+  });
+
+  it('rejects traversal, backslashes, and characters that are not URL-safe', () => {
+    for (const outDir of [
+      '..',
+      '../x',
+      'x/..',
+      './assets',
+      'assets/./favicons',
+      'a\\b',
+      'assets\\favicons',
+      'a b',
+      'assets//favicons',
+      'assets/favicons?x',
+      'assets/favi%20cons',
+      'café',
+    ]) {
+      expect(() => normalizeOutDir(outDir), outDir).toThrow('"outDir"');
+    }
+  });
+});
+
+describe('assetBase', () => {
+  it('prefixes the asset folder with Vite\'s base', () => {
+    expect(assetBase('/', 'assets/favicons')).toBe('/assets/favicons/');
+    expect(assetBase('/subpath/', 'assets/favicons')).toBe('/subpath/assets/favicons/');
+    expect(assetBase('./', 'assets/favicons')).toBe('./assets/favicons/');
+    expect(assetBase('', 'assets/favicons')).toBe('assets/favicons/');
+    expect(assetBase('https://cdn.example.com/', 'assets/favicons')).toBe('https://cdn.example.com/assets/favicons/');
+  });
+
+  it('is the base itself when the assets sit at the site root', () => {
+    expect(assetBase('/', '')).toBe('/');
+    expect(assetBase('/subpath/', '')).toBe('/subpath/');
+    expect(assetBase('./', '')).toBe('./');
+    expect(assetBase('', '')).toBe('');
+    expect(assetBase('https://cdn.example.com/', '')).toBe('https://cdn.example.com/');
+  });
+
+  it('never produces a protocol-relative prefix from a non-protocol-relative base', () => {
+    for (const base of ['/', '/subpath/', './', '', 'https://cdn.example.com/']) {
+      for (const dir of ['', 'assets/favicons']) {
+        expect(assetBase(base, dir).startsWith('//'), `${base} + ${dir}`).toBe(false);
+      }
+    }
+  });
+});
 
 describe('manifestAppRoot', () => {
   it('returns an absolute base unchanged', () => {
@@ -33,6 +96,16 @@ describe('manifestAppRoot', () => {
 
   it('resolves to the current directory when assets sit at the root', () => {
     expect(manifestAppRoot('./', '')).toBe('./');
+    expect(manifestAppRoot('', '')).toBe('./');
+  });
+
+  it('returns an absolute base unchanged when assets sit at the root', () => {
+    expect(manifestAppRoot('/', '')).toBe('/');
+    expect(manifestAppRoot('/app/', '')).toBe('/app/');
+  });
+
+  it('omits app-root navigation fields for a full-URL base when assets sit at the root', () => {
+    expect(manifestAppRoot('https://cdn.example.com/', '')).toBeUndefined();
   });
 });
 
@@ -62,5 +135,24 @@ describe('resolveAssetName', () => {
   it('returns null for a non-asset request', () => {
     expect(resolveAssetName('/index.html', '/', 'assets/favicons')).toBeNull();
     expect(resolveAssetName('/assets/other/thing.png', '/', 'assets/favicons')).toBeNull();
+  });
+
+  it('returns null for a nested path below the asset folder', () => {
+    expect(resolveAssetName('/assets/favicons/nested/favicon.ico', '/', 'assets/favicons')).toBeNull();
+  });
+
+  it('resolves a root-level asset request', () => {
+    expect(resolveAssetName('/favicon.ico', '/', '')).toBe('favicon.ico');
+    expect(resolveAssetName('/manifest.webmanifest', '', '')).toBe('manifest.webmanifest');
+    expect(resolveAssetName('/favicon.svg?v=2', './', '')).toBe('favicon.svg');
+  });
+
+  it('strips an absolute subpath base for a root-level asset', () => {
+    expect(resolveAssetName('/app/favicon.ico', '/app/', '')).toBe('favicon.ico');
+  });
+
+  it('returns null for a nested path when assets sit at the root', () => {
+    expect(resolveAssetName('/assets/index-abc123.png', '/', '')).toBeNull();
+    expect(resolveAssetName('/', '/', '')).toBeNull();
   });
 });
