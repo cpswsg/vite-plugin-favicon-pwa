@@ -110,7 +110,7 @@ async function buildFixture(base: string, options: FaviconsOptions, assetsDir = 
 const PAGES = ['index.html', 'nested/index.html', 'docs/guides/index.html'];
 
 async function buildMultipage(base: string, options: FaviconsOptions) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-mpa-')));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'vfp-mpa-')));
   projects.push(root);
   writeFileSync(join(root, 'logo.svg'), SOURCE_SVG);
   for (const page of PAGES) {
