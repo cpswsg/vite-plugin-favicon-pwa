@@ -338,6 +338,21 @@ No. It is a focused favicon and PWA asset generator. It pairs well with your
 preferred service-worker or PWA solution when you need caching and offline
 behavior.
 
+## Security
+
+`npm audit --omit=dev` is the release gate and must be clean: it covers the
+dependency tree consumers actually install, which is `sharp` and `png-to-ico`.
+The published package ships `dist` only, and consumers never receive this
+repository's development lockfile.
+
+A full `npm audit` runs in CI as informational. As of v1.2.0 it reports one
+advisory, `nanoid` reached through `vite` -> `postcss`, which is development
+tooling and absent from the runtime tree. Findings of that shape are resolved by
+upgrading the toolchain once upstream's supported range includes a patched
+release, not by adding an override to silence the audit. An override would force
+a transitive version outside the range upstream tests against, so any such change
+has to clear the packed-package matrix against Vite 6, 7, and 8 first.
+
 ## License
 
 MIT (c) Cynthia Swain-Sugarman

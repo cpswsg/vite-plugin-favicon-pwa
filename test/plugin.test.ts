@@ -44,6 +44,14 @@ afterAll(() => {
   for (const dir of projects) rmSync(dir, { recursive: true, force: true });
 });
 
+// Match Vite's native path canonicalization. This resolves macOS's /var
+// symlink and preserves the Windows path identity Rolldown uses for HTML inputs.
+function createProject(prefix: string): string {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
+  projects.push(root);
+  return root;
+}
+
 type ConfigCase = {
   publicDirName?: string | null;
   ssr?: boolean;
@@ -57,8 +65,7 @@ function resolveConfig(
   publicFiles: string[],
   { publicDirName = 'public', ssr = false, command = 'build', copyPublicDir = true, publicDirs = [] }: ConfigCase = {},
 ) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-public-')));
-  projects.push(root);
+  const root = createProject('vfp-public-');
   const publicDir = publicDirName ? join(root, publicDirName) : '';
   if (publicDir) {
     mkdirSync(publicDir, { recursive: true });
@@ -80,10 +87,7 @@ function resolveConfig(
 }
 
 async function buildFixture(base: string, options: FaviconsOptions, assetsDir = DIR) {
-  // realpathSync canonicalizes the macOS /var -> /private/var tmp symlink so
-  // Vite's realpath-based html emit doesn't compute an escaping output path.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-')));
-  projects.push(root);
+  const root = createProject('vfp-');
   writeFileSync(join(root, 'logo.svg'), SOURCE_SVG);
   writeFileSync(join(root, 'index.html'), INDEX_HTML);
 
@@ -110,8 +114,7 @@ async function buildFixture(base: string, options: FaviconsOptions, assetsDir = 
 const PAGES = ['index.html', 'nested/index.html', 'docs/guides/index.html'];
 
 async function buildMultipage(base: string, options: FaviconsOptions) {
-  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'vfp-mpa-')));
-  projects.push(root);
+  const root = createProject('vfp-mpa-');
   writeFileSync(join(root, 'logo.svg'), SOURCE_SVG);
   for (const page of PAGES) {
     mkdirSync(join(root, dirname(page)), { recursive: true });
@@ -224,8 +227,7 @@ describe('faviconPwa build', () => {
   }, 30000);
 
   it('finds viewport metadata regardless of quote style or attribute order', async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-viewport-')));
-    projects.push(root);
+    const root = createProject('vfp-viewport-');
     writeFileSync(join(root, 'logo.svg'), SOURCE_SVG);
     writeFileSync(
       join(root, 'index.html'),
@@ -245,8 +247,7 @@ describe('faviconPwa build', () => {
   }, 30000);
 
   it('regenerates when a plugin instance is reused for a later build', async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-rebuild-')));
-    projects.push(root);
+    const root = createProject('vfp-rebuild-');
     const source = join(root, 'logo.svg');
     writeFileSync(source, SOURCE_SVG.replace('#3366ff', '#ff0000'));
     writeFileSync(join(root, 'index.html'), INDEX_HTML);
@@ -594,8 +595,7 @@ describe('faviconPwa build', () => {
   });
 
   it('does not generate or emit browser assets during an SSR build', async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'vfp-ssr-')));
-    projects.push(root);
+    const root = createProject('vfp-ssr-');
     writeFileSync(join(root, 'entry.js'), 'export const render = () => "ok";');
 
     const outDir = join(root, 'dist');

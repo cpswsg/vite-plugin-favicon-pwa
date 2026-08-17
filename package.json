@@ -60,7 +60,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p example/tsconfig.json",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run test:package"
+    "audit:prod": "npm audit --omit=dev",
+    "prepublishOnly": "npm run audit:prod && npm run lint && npm run typecheck && npm test && npm run test:package"
   },
   "peerDependencies": {
     "vite": ">=6"

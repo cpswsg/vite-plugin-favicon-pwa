@@ -37,6 +37,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit runtime dependencies
+        run: npm run audit:prod
+
+      - name: Audit all dependencies (informational)
+        if: matrix.node == '22.22.2'
+        continue-on-error: true
+        run: npm audit
+
       - name: Lint
         run: npm run lint
 
