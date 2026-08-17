@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assetBase, manifestAppRoot, normalizeOutDir, resolveAssetName } from '../src/paths';
+import { assetBase, assetBaseForHtml, manifestAppRoot, normalizeOutDir, resolveAssetName } from '../src/paths';
 
 describe('normalizeOutDir', () => {
   it('keeps a URL-safe relative directory', () => {
@@ -61,6 +61,37 @@ describe('assetBase', () => {
         expect(assetBase(base, dir).startsWith('//'), `${base} + ${dir}`).toBe(false);
       }
     }
+  });
+});
+
+describe('assetBaseForHtml', () => {
+  it('steps back out of a nested document under a relative base', () => {
+    expect(assetBaseForHtml('./', '', '/index.html')).toBe('./');
+    expect(assetBaseForHtml('./', '', '/nested/index.html')).toBe('../');
+    expect(assetBaseForHtml('./', '', '/docs/guides/index.html')).toBe('../../');
+    expect(assetBaseForHtml('', '', '/nested/index.html')).toBe('../');
+  });
+
+  it('steps back out of a nested document before entering the asset folder', () => {
+    expect(assetBaseForHtml('./', 'assets/favicons', '/index.html')).toBe('./assets/favicons/');
+    expect(assetBaseForHtml('./', 'assets/favicons', '/nested/index.html')).toBe('../assets/favicons/');
+    expect(assetBaseForHtml('./', 'assets/favicons', '/docs/guides/index.html')).toBe('../../assets/favicons/');
+    expect(assetBaseForHtml('', 'assets/favicons', '/nested/index.html')).toBe('../assets/favicons/');
+  });
+
+  it('ignores document depth for an absolute or full-URL base', () => {
+    for (const base of ['/', '/subpath/', 'https://cdn.example.com/', '//cdn.example.com/']) {
+      for (const dir of ['', 'assets/favicons']) {
+        for (const path of ['/index.html', '/nested/index.html', '/docs/guides/index.html']) {
+          expect(assetBaseForHtml(base, dir, path), `${base} + ${dir} + ${path}`).toBe(assetBase(base, dir));
+        }
+      }
+    }
+  });
+
+  it('treats a document path without a leading slash as root-relative', () => {
+    expect(assetBaseForHtml('./', '', 'nested/index.html')).toBe('../');
+    expect(assetBaseForHtml('./', 'favicons', 'index.html')).toBe('./favicons/');
   });
 });
 
