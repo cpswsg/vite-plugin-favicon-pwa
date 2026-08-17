@@ -127,6 +127,8 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
           (inexact ? ' Names differing only in case collide on macOS and Windows.' : ''),
       );
     };
+    // A directory cannot be overwritten by an emitted file, so at build the copy
+    // leaves it in place and the bundle write fails outright.
     const blocking = building ? collisions.filter((entry) => entry.isDirectory()) : [];
     warn(blocking, `writing the generated favicon set over them in ${outDirPath} fails the build`);
     warn(

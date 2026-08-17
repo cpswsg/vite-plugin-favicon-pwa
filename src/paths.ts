@@ -25,6 +25,9 @@ export function assetBase(viteBase: string, dir: string): string {
   return dir ? `${viteBase}${dir}/` : viteBase;
 }
 
+// `htmlPath` is Vite's transformIndexHtml `ctx.path`, a root-relative URL path
+// (e.g. "/docs/guides/index.html") rather than a filesystem path, so the posix
+// flavour of node:path is required on every platform, Windows included.
 export function assetBaseForHtml(viteBase: string, dir: string, htmlPath: string): string {
   const relativeBase = viteBase === '' || viteBase === './';
   if (!relativeBase) return assetBase(viteBase, dir);
