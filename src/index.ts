@@ -4,7 +4,7 @@ import type { Plugin, ResolvedConfig } from 'vite';
 import { oklchToRgb } from './color.js';
 import { generate, GENERATED_ASSET_NAMES } from './generate.js';
 import { createAssetCoordinator } from './coordinator.js';
-import { assetBase, normalizeOutDir, resolveAssetName } from './paths.js';
+import { assetBaseForHtml, normalizeOutDir, resolveAssetName } from './paths.js';
 import { DEFAULTS, type FaviconsOptions } from './options.js';
 
 export type { FaviconsOptions } from './options.js';
@@ -73,37 +73,30 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
   // build), resolved in configResolved.
   let viteBase = '/';
   let ssrBuild = false;
-  // Public URL prefix for the asset <link> hrefs, incl. Vite's base so subpath
-  // deploys resolve, e.g. "/subpath/assets/favicons/".
-  let base = assetBase('/', dir);
-  let links: Tag[] = [];
 
   // Regenerate the asset set on demand; the coordinator commits only the newest
   // run, so a dev source-change can't be clobbered by a slower in-flight run.
   const coordinator = createAssetCoordinator(() => generate(root, options, viteBase, dir));
 
-  // (Re)build the URL-dependent tags once Vite's base is known.
-  const configure = () => {
-    base = assetBase(viteBase, dir);
-    links = [
-      { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.ico`, sizes: '16x16 32x32 48x48' } },
-      { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.svg`, type: 'image/svg+xml' } },
-      { tag: 'link', attrs: { rel: 'apple-touch-icon', href: `${base}apple-touch-icon.png` } },
-      {
-        tag: 'link',
-        attrs: {
-          rel: 'manifest',
-          href: `${base}manifest.webmanifest`,
-          ...(options.manifestCrossOrigin ? { crossorigin: options.manifestCrossOrigin } : {}),
-        },
+  // Public URL prefix for the asset <link> hrefs, incl. Vite's base so subpath
+  // deploys resolve, e.g. "/subpath/assets/favicons/".
+  const createHtmlTags = (base: string): Tag[] => [
+    { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.ico`, sizes: '16x16 32x32 48x48' } },
+    { tag: 'link', attrs: { rel: 'icon', href: `${base}favicon.svg`, type: 'image/svg+xml' } },
+    { tag: 'link', attrs: { rel: 'apple-touch-icon', href: `${base}apple-touch-icon.png` } },
+    {
+      tag: 'link',
+      attrs: {
+        rel: 'manifest',
+        href: `${base}manifest.webmanifest`,
+        ...(options.manifestCrossOrigin ? { crossorigin: options.manifestCrossOrigin } : {}),
       },
-      { tag: 'meta', attrs: { name: 'theme-color', content: options.themeColor } },
-      { tag: 'meta', attrs: { name: 'mobile-web-app-capable', content: 'yes' } },
-      { tag: 'meta', attrs: { name: 'apple-mobile-web-app-capable', content: 'yes' } },
-      { tag: 'meta', attrs: { name: 'apple-mobile-web-app-title', content: options.shortName ?? options.name } },
-    ];
-  };
-  configure();
+    },
+    { tag: 'meta', attrs: { name: 'theme-color', content: options.themeColor } },
+    { tag: 'meta', attrs: { name: 'mobile-web-app-capable', content: 'yes' } },
+    { tag: 'meta', attrs: { name: 'apple-mobile-web-app-capable', content: 'yes' } },
+    { tag: 'meta', attrs: { name: 'apple-mobile-web-app-title', content: options.shortName ?? options.name } },
+  ];
 
   // Root outDir and publicDir target the same path and the loser is silent. At
   // build, Vite copies publicDir in prepareOutDir and Rollup writes over it; in
@@ -167,7 +160,6 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
       // (and not collapsed to the absolute root).
       viteBase = config.base ?? '/';
       ssrBuild = Boolean(config.build.ssr);
-      configure();
       warnPublicDirCollisions(config);
     },
     buildStart() {
@@ -230,12 +222,13 @@ export default function faviconPwa(userOptions: FaviconsOptions): Plugin {
     },
     transformIndexHtml: {
       order: 'post',
-      handler: (html) => {
+      handler: (html, ctx) => {
+        const tags = createHtmlTags(assetBaseForHtml(viteBase, dir, ctx.path));
         const match = findViewport(html);
         // Fall back to Vite's default head injection if the marker is missing.
-        if (!match) return links;
+        if (!match) return tags;
         const at = match.index! + match[0].length;
-        const rendered = links.map((t) => `  ${renderTag(t)}`).join('\n');
+        const rendered = tags.map((t) => `  ${renderTag(t)}`).join('\n');
         return html.slice(0, at) + '\n' + rendered + html.slice(at);
       },
     },

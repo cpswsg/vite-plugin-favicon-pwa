@@ -1,3 +1,5 @@
+import { posix } from 'node:path';
+
 // Normalize outDir to a bare Rollup file-name prefix: "" for the site root,
 // otherwise a relative path with no surrounding slashes. Every spelling of the
 // root ("", ".", "/", "./") collapses to "" so callers branch on one value.
@@ -21,6 +23,16 @@ export function normalizeOutDir(outDir: string): string {
 // http://favicon.ico. At the root the prefix is Vite's base verbatim.
 export function assetBase(viteBase: string, dir: string): string {
   return dir ? `${viteBase}${dir}/` : viteBase;
+}
+
+export function assetBaseForHtml(viteBase: string, dir: string, htmlPath: string): string {
+  const relativeBase = viteBase === '' || viteBase === './';
+  if (!relativeBase) return assetBase(viteBase, dir);
+  const from = posix.dirname(htmlPath.startsWith('/') ? htmlPath : `/${htmlPath}`);
+  const relative = posix.relative(from, dir ? `/${dir}` : '/');
+  if (!relative) return './';
+  const walksUp = relative === '..' || relative.startsWith('../');
+  return walksUp ? `${relative}/` : `./${relative}/`;
 }
 
 // The manifest is emitted beside the icons inside `dir`, but its `id`,

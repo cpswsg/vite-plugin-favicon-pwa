@@ -1,7 +1,7 @@
 import { afterAll, describe, it, expect } from 'vitest';
 import { build } from 'vite';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import sharp from 'sharp';
 import faviconPwa from '../src/index';
@@ -105,6 +105,35 @@ async function buildFixture(base: string, options: FaviconsOptions, assetsDir = 
     svg: read('favicon.svg'),
     manifest: JSON.parse(read('manifest.webmanifest')),
   };
+}
+
+const PAGES = ['index.html', 'nested/index.html', 'docs/guides/index.html'];
+
+async function buildMultipage(base: string, options: FaviconsOptions) {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'vfp-mpa-')));
+  projects.push(root);
+  writeFileSync(join(root, 'logo.svg'), SOURCE_SVG);
+  for (const page of PAGES) {
+    mkdirSync(join(root, dirname(page)), { recursive: true });
+    writeFileSync(join(root, page), INDEX_HTML);
+  }
+
+  const outDir = join(root, 'dist');
+  await build({
+    root,
+    base,
+    logLevel: 'silent',
+    configFile: false,
+    plugins: [faviconPwa({ source: 'logo.svg', ...options })],
+    build: {
+      outDir,
+      emptyOutDir: true,
+      reportCompressedSize: false,
+      rollupOptions: { input: Object.fromEntries(PAGES.map((page) => [page, join(root, page)])) },
+    },
+  });
+
+  return Object.fromEntries(PAGES.map((page) => [page, readFileSync(join(outDir, page), 'utf8')]));
 }
 
 const hrefs = (html: string) =>
@@ -378,6 +407,74 @@ describe('faviconPwa build', () => {
     ]);
     expect(out.manifest.start_url).toBe('./');
   }, 30000);
+
+  it('walks each nested entry back to root output under a relative base', async () => {
+    const pages = await buildMultipage('./', { name: 'Fixture App', outDir: '/' });
+
+    expect(hrefs(pages['index.html'])).toEqual([
+      './favicon.ico',
+      './favicon.svg',
+      './apple-touch-icon.png',
+      './manifest.webmanifest',
+    ]);
+    expect(hrefs(pages['nested/index.html'])).toEqual([
+      '../favicon.ico',
+      '../favicon.svg',
+      '../apple-touch-icon.png',
+      '../manifest.webmanifest',
+    ]);
+    expect(hrefs(pages['docs/guides/index.html'])).toEqual([
+      '../../favicon.ico',
+      '../../favicon.svg',
+      '../../apple-touch-icon.png',
+      '../../manifest.webmanifest',
+    ]);
+  }, 30000);
+
+  it('walks each nested entry back to the asset folder under an empty base', async () => {
+    const pages = await buildMultipage('', { name: 'Fixture App' });
+
+    expect(hrefs(pages['index.html'])).toEqual([
+      './assets/favicons/favicon.ico',
+      './assets/favicons/favicon.svg',
+      './assets/favicons/apple-touch-icon.png',
+      './assets/favicons/manifest.webmanifest',
+    ]);
+    expect(hrefs(pages['nested/index.html'])).toEqual([
+      '../assets/favicons/favicon.ico',
+      '../assets/favicons/favicon.svg',
+      '../assets/favicons/apple-touch-icon.png',
+      '../assets/favicons/manifest.webmanifest',
+    ]);
+    expect(hrefs(pages['docs/guides/index.html'])).toEqual([
+      '../../assets/favicons/favicon.ico',
+      '../../assets/favicons/favicon.svg',
+      '../../assets/favicons/apple-touch-icon.png',
+      '../../assets/favicons/manifest.webmanifest',
+    ]);
+  }, 30000);
+
+  it('keeps every nested entry on the same href under absolute and CDN bases', async () => {
+    const subpath = await buildMultipage('/subpath/', { name: 'Fixture App', outDir: '/' });
+    for (const page of PAGES) {
+      expect(hrefs(subpath[page]), page).toEqual([
+        '/subpath/favicon.ico',
+        '/subpath/favicon.svg',
+        '/subpath/apple-touch-icon.png',
+        '/subpath/manifest.webmanifest',
+      ]);
+    }
+
+    const cdn = await buildMultipage('https://cdn.example.com/static/', { name: 'Fixture App' });
+    for (const page of PAGES) {
+      expect(hrefs(cdn[page]), page).toEqual([
+        'https://cdn.example.com/static/assets/favicons/favicon.ico',
+        'https://cdn.example.com/static/assets/favicons/favicon.svg',
+        'https://cdn.example.com/static/assets/favicons/apple-touch-icon.png',
+        'https://cdn.example.com/static/assets/favicons/manifest.webmanifest',
+      ]);
+    }
+  }, 60000);
 
   it('omits app navigation URLs for root output on a full-URL base', async () => {
     const out = await buildFixture('https://cdn.example.com/static/', { name: 'Fixture App', outDir: '' }, '');

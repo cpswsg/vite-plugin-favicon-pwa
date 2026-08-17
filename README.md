@@ -247,10 +247,17 @@ export default defineConfig({
 });
 ```
 
-Relative builds using `base: './'` or `base: ''` are supported too. Manifest
-icons use bare filenames so they resolve beside `manifest.webmanifest`.
-Manifest `id`, `start_url`, and `scope` point back to the application root based
-on the depth of `outDir`.
+Relative builds using `base: './'` or `base: ''` are supported too. Because a
+relative href resolves against the document that carries it, each HTML entry
+gets its own prefix, computed from that document's depth. In a multipage build
+with the default `outDir`, `index.html` receives
+`./assets/favicons/favicon.ico` while `docs/guides/index.html` receives
+`../../assets/favicons/favicon.ico`. Absolute and CDN bases are depth
+independent and every entry shares one href.
+
+Manifest icons use bare filenames so they resolve beside
+`manifest.webmanifest`. Manifest `id`, `start_url`, and `scope` point back to
+the application root based on the depth of `outDir`.
 
 For example, the default `outDir: 'assets/favicons'` produces the following
 relative manifest fields:
